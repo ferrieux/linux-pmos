@@ -7,6 +7,7 @@
 // Author: Jimmy Zhang <zhangjianming@awinic.com>
 // Author: Weidong Wang <wangweidong.a@awinic.com>
 //
+#define DEBUG
 
 #include <linux/i2c.h>
 #include <linux/firmware.h>
@@ -24,6 +25,29 @@ static const struct regmap_config aw88261_remap_config = {
 	.val_format_endian = REGMAP_ENDIAN_BIG,
 };
 
+static int verbose_regmap_write(struct device *dev, struct regmap *map, unsigned int reg, unsigned int val)
+{
+  dev_dbg(dev, "REGWRITE reg=0x%x val=0x%x\n", reg, val);
+  return regmap_write(map, reg, val);
+}
+
+static int verbose_regmap_update_bits(struct device *dev, struct regmap *map, unsigned int reg, unsigned int mask, unsigned int val)
+{
+  dev_dbg(dev, "REGUPDATE reg=0x%x mask=0x%x val=0x%x\n",reg,mask,val);
+  return regmap_update_bits(map, reg, mask, val);
+}
+
+static int verbose_regmap_read(struct device *dev, struct regmap *map, unsigned int reg, unsigned int *val)
+{
+  int ret;
+
+  ret = regmap_read(map, reg, val);
+  dev_dbg(dev, "REGREAD reg=0x%x val=0x%x\n", reg, *val);
+  
+  return ret;
+}
+
+
 static void aw88261_dev_set_volume(struct aw_device *aw_dev, unsigned int value)
 {
 	struct aw_volume_desc *vol_desc = &aw_dev->volume_desc;
@@ -33,13 +57,13 @@ static void aw88261_dev_set_volume(struct aw_device *aw_dev, unsigned int value)
 	volume = min((value + vol_desc->init_volume), (unsigned int)AW88261_MUTE_VOL);
 	real_value = DB_TO_REG_VAL(volume);
 
-	regmap_read(aw_dev->regmap, AW88261_SYSCTRL2_REG, &reg_value);
+	verbose_regmap_read(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL2_REG, &reg_value);
 
 	real_value = (real_value | (reg_value & AW88261_VOL_START_MASK));
 
 	dev_dbg(aw_dev->dev, "value 0x%x , real_value:0x%x", value, real_value);
 
-	regmap_write(aw_dev->regmap, AW88261_SYSCTRL2_REG, real_value);
+	verbose_regmap_write(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL2_REG, real_value);
 }
 
 static void aw88261_dev_fade_in(struct aw_device *aw_dev)
@@ -89,30 +113,30 @@ static void aw88261_dev_fade_out(struct aw_device *aw_dev)
 static void aw88261_dev_i2s_tx_enable(struct aw_device *aw_dev, bool flag)
 {
 	if (flag)
-		regmap_update_bits(aw_dev->regmap, AW88261_I2SCFG1_REG,
+		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_I2SCFG1_REG,
 			~AW88261_I2STXEN_MASK, AW88261_I2STXEN_ENABLE_VALUE);
 	else
-		regmap_update_bits(aw_dev->regmap, AW88261_I2SCFG1_REG,
+		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_I2SCFG1_REG,
 			~AW88261_I2STXEN_MASK, AW88261_I2STXEN_DISABLE_VALUE);
 }
 
 static void aw88261_dev_pwd(struct aw_device *aw_dev, bool pwd)
 {
 	if (pwd)
-		regmap_update_bits(aw_dev->regmap, AW88261_SYSCTRL_REG,
+		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL_REG,
 				~AW88261_PWDN_MASK, AW88261_PWDN_POWER_DOWN_VALUE);
 	else
-		regmap_update_bits(aw_dev->regmap, AW88261_SYSCTRL_REG,
+		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL_REG,
 				~AW88261_PWDN_MASK, AW88261_PWDN_WORKING_VALUE);
 }
 
 static void aw88261_dev_amppd(struct aw_device *aw_dev, bool amppd)
 {
 	if (amppd)
-		regmap_update_bits(aw_dev->regmap, AW88261_SYSCTRL_REG,
+		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL_REG,
 				~AW88261_AMPPD_MASK, AW88261_AMPPD_POWER_DOWN_VALUE);
 	else
-		regmap_update_bits(aw_dev->regmap, AW88261_SYSCTRL_REG,
+		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL_REG,
 				~AW88261_AMPPD_MASK, AW88261_AMPPD_WORKING_VALUE);
 }
 
@@ -120,10 +144,10 @@ static void aw88261_dev_mute(struct aw_device *aw_dev, bool is_mute)
 {
 	if (is_mute) {
 		aw88261_dev_fade_out(aw_dev);
-		regmap_update_bits(aw_dev->regmap, AW88261_SYSCTRL_REG,
+		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL_REG,
 				~AW88261_HMUTE_MASK, AW88261_HMUTE_ENABLE_VALUE);
 	} else {
-		regmap_update_bits(aw_dev->regmap, AW88261_SYSCTRL_REG,
+		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL_REG,
 				~AW88261_HMUTE_MASK, AW88261_HMUTE_DISABLE_VALUE);
 		aw88261_dev_fade_in(aw_dev);
 	}
@@ -134,9 +158,9 @@ static void aw88261_dev_clear_int_status(struct aw_device *aw_dev)
 	unsigned int int_status;
 
 	/* read int status and clear */
-	regmap_read(aw_dev->regmap, AW88261_SYSINT_REG, &int_status);
+	verbose_regmap_read(aw_dev->dev, aw_dev->regmap, AW88261_SYSINT_REG, &int_status);
 	/* make sure int status is clear */
-	regmap_read(aw_dev->regmap, AW88261_SYSINT_REG, &int_status);
+	verbose_regmap_read(aw_dev->dev, aw_dev->regmap, AW88261_SYSINT_REG, &int_status);
 
 	dev_dbg(aw_dev->dev, "read interrupt reg = 0x%04x", int_status);
 }
@@ -146,7 +170,7 @@ static int aw88261_dev_get_iis_status(struct aw_device *aw_dev)
 	unsigned int reg_val;
 	int ret;
 
-	ret = regmap_read(aw_dev->regmap, AW88261_SYSST_REG, &reg_val);
+	ret = verbose_regmap_read(aw_dev->dev, aw_dev->regmap, AW88261_SYSST_REG, &reg_val);
 	if (ret)
 		return ret;
 	if ((reg_val & AW88261_BIT_PLL_CHECK) != AW88261_BIT_PLL_CHECK) {
@@ -179,7 +203,7 @@ static int aw88261_dev_check_mode2_pll(struct aw_device *aw_dev)
 	unsigned int reg_val;
 	int ret, i;
 
-	ret = regmap_read(aw_dev->regmap, AW88261_PLLCTRL1_REG, &reg_val);
+	ret = verbose_regmap_read(aw_dev->dev, aw_dev->regmap, AW88261_PLLCTRL1_REG, &reg_val);
 	if (ret)
 		return ret;
 
@@ -190,7 +214,7 @@ static int aw88261_dev_check_mode2_pll(struct aw_device *aw_dev)
 	}
 
 	/* change mode2 */
-	ret = regmap_update_bits(aw_dev->regmap, AW88261_PLLCTRL1_REG,
+	ret = verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_PLLCTRL1_REG,
 			~AW88261_CCO_MUX_MASK, AW88261_CCO_MUX_DIVIDED_VALUE);
 	if (ret)
 		return ret;
@@ -206,7 +230,7 @@ static int aw88261_dev_check_mode2_pll(struct aw_device *aw_dev)
 	}
 
 	/* change mode1 */
-	ret = regmap_update_bits(aw_dev->regmap, AW88261_PLLCTRL1_REG,
+	ret = verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_PLLCTRL1_REG,
 			~AW88261_CCO_MUX_MASK, AW88261_CCO_MUX_BYPASS_VALUE);
 	if (ret == 0) {
 		usleep_range(AW88261_2000_US, AW88261_2000_US + 10);
@@ -248,7 +272,7 @@ static int aw88261_dev_check_sysst(struct aw_device *aw_dev)
 	int ret, i;
 
 	for (i = 0; i < AW88261_DEV_SYSST_CHECK_MAX; i++) {
-		ret = regmap_read(aw_dev->regmap, AW88261_SYSST_REG, &reg_val);
+		ret = verbose_regmap_read(aw_dev->dev, aw_dev->regmap, AW88261_SYSST_REG, &reg_val);
 		if (ret)
 			return ret;
 
@@ -269,11 +293,11 @@ static int aw88261_dev_check_sysst(struct aw_device *aw_dev)
 static void aw88261_dev_uls_hmute(struct aw_device *aw_dev, bool uls_hmute)
 {
 	if (uls_hmute)
-		regmap_update_bits(aw_dev->regmap, AW88261_SYSCTRL_REG,
+		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL_REG,
 				~AW88261_ULS_HMUTE_MASK,
 				AW88261_ULS_HMUTE_ENABLE_VALUE);
 	else
-		regmap_update_bits(aw_dev->regmap, AW88261_SYSCTRL_REG,
+		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL_REG,
 				~AW88261_ULS_HMUTE_MASK,
 				AW88261_ULS_HMUTE_DISABLE_VALUE);
 }
@@ -282,23 +306,23 @@ static void aw88261_reg_force_set(struct aw88261 *aw88261)
 {
 	if (aw88261->frcset_en == AW88261_FRCSET_ENABLE) {
 		/* set FORCE_PWM */
-		regmap_update_bits(aw88261->regmap, AW88261_BSTCTRL3_REG,
-				AW88261_FORCE_PWM_MASK, AW88261_FORCE_PWM_FORCEMINUS_PWM_VALUE);
+		verbose_regmap_update_bits(aw88261->aw_pa->dev, aw88261->regmap, AW88261_BSTCTRL3_REG,
+				~AW88261_FORCE_PWM_MASK, AW88261_FORCE_PWM_FORCEMINUS_PWM_VALUE);
 		/* set BOOST_OS_WIDTH */
-		regmap_update_bits(aw88261->regmap, AW88261_BSTCTRL5_REG,
-				AW88261_BST_OS_WIDTH_MASK, AW88261_BST_OS_WIDTH_50NS_VALUE);
+		verbose_regmap_update_bits(aw88261->aw_pa->dev, aw88261->regmap, AW88261_BSTCTRL5_REG,
+				~AW88261_BST_OS_WIDTH_MASK, AW88261_BST_OS_WIDTH_50NS_VALUE);
 		/* set BURST_LOOPR */
-		regmap_update_bits(aw88261->regmap, AW88261_BSTCTRL6_REG,
-				AW88261_BST_LOOPR_MASK, AW88261_BST_LOOPR_340K_VALUE);
+		verbose_regmap_update_bits(aw88261->aw_pa->dev, aw88261->regmap, AW88261_BSTCTRL6_REG,
+				~AW88261_BST_LOOPR_MASK, AW88261_BST_LOOPR_340K_VALUE);
 		/* set RSQN_DLY */
-		regmap_update_bits(aw88261->regmap, AW88261_BSTCTRL7_REG,
-				AW88261_RSQN_DLY_MASK, AW88261_RSQN_DLY_35NS_VALUE);
+		verbose_regmap_update_bits(aw88261->aw_pa->dev, aw88261->regmap, AW88261_BSTCTRL7_REG,
+				~AW88261_RSQN_DLY_MASK, AW88261_RSQN_DLY_35NS_VALUE);
 		/* set BURST_SSMODE */
-		regmap_update_bits(aw88261->regmap, AW88261_BSTCTRL8_REG,
-				AW88261_BURST_SSMODE_MASK, AW88261_BURST_SSMODE_FAST_VALUE);
+		verbose_regmap_update_bits(aw88261->aw_pa->dev, aw88261->regmap, AW88261_BSTCTRL8_REG,
+				~AW88261_BURST_SSMODE_MASK, AW88261_BURST_SSMODE_FAST_VALUE);
 		/* set BST_BURST */
-		regmap_update_bits(aw88261->regmap, AW88261_BSTCTRL9_REG,
-				AW88261_BST_BURST_MASK, AW88261_BST_BURST_30MA_VALUE);
+		verbose_regmap_update_bits(aw88261->aw_pa->dev, aw88261->regmap, AW88261_BSTCTRL9_REG,
+				~AW88261_BST_BURST_MASK, AW88261_BST_BURST_30MA_VALUE);
 	} else {
 		dev_dbg(aw88261->aw_pa->dev, "needn't set reg value");
 	}
@@ -310,13 +334,13 @@ static int aw88261_dev_get_icalk(struct aw_device *aw_dev, int16_t *icalk)
 	unsigned int reg_val;
 	int ret;
 
-	ret = regmap_read(aw_dev->regmap, AW88261_EFRH4_REG, &reg_val);
+	ret = verbose_regmap_read(aw_dev->dev, aw_dev->regmap, AW88261_EFRH4_REG, &reg_val);
 	if (ret)
 		return ret;
 
 	reg_icalk = reg_val & (~AW88261_EF_ISN_GESLP_H_MASK);
 
-	ret = regmap_read(aw_dev->regmap, AW88261_EFRL4_REG, &reg_val);
+	ret = verbose_regmap_read(aw_dev->dev, aw_dev->regmap, AW88261_EFRL4_REG, &reg_val);
 	if (ret)
 		return ret;
 
@@ -338,13 +362,13 @@ static int aw88261_dev_get_vcalk(struct aw_device *aw_dev, int16_t *vcalk)
 	unsigned int reg_val;
 	int ret;
 
-	ret = regmap_read(aw_dev->regmap, AW88261_EFRH3_REG, &reg_val);
+	ret = verbose_regmap_read(aw_dev->dev, aw_dev->regmap, AW88261_EFRH3_REG, &reg_val);
 	if (ret)
 		return ret;
 
 	reg_vcalk = (u16)reg_val & (~AW88261_EF_VSN_GESLP_H_MASK);
 
-	ret = regmap_read(aw_dev->regmap, AW88261_EFRL3_REG, &reg_val);
+	ret = verbose_regmap_read(aw_dev->dev, aw_dev->regmap, AW88261_EFRL3_REG, &reg_val);
 	if (ret)
 		return ret;
 
@@ -384,7 +408,7 @@ static int aw88261_dev_set_vcalb(struct aw_device *aw_dev)
 
 	dev_dbg(aw_dev->dev, "icalk=%d, vcalk=%d, vcalb=%d, reg_val=0x%04x",
 			icalk, vcalk, vcalb, reg_val);
-	ret = regmap_write(aw_dev->regmap, AW88261_VSNTM1_REG, reg_val);
+	ret = verbose_regmap_write(aw_dev->dev, aw_dev->regmap, AW88261_VSNTM1_REG, reg_val);
 
 	return ret;
 }
@@ -419,13 +443,15 @@ static int aw88261_dev_reg_update(struct aw88261 *aw88261,
 
 		if (reg_addr == AW88261_SYSCTRL_REG) {
 			aw88261->amppd_st = reg_val & (~AW88261_AMPPD_MASK);
-			ret = regmap_read(aw_dev->regmap, reg_addr, &read_val);
+			ret = verbose_regmap_read(aw_dev->dev, aw_dev->regmap, reg_addr, &read_val);
 			if (ret)
 				break;
 
+			/* keep all three bits from current hw status */
 			read_val &= (~AW88261_AMPPD_MASK) | (~AW88261_PWDN_MASK) |
 								(~AW88261_HMUTE_MASK);
-			reg_val &= (AW88261_AMPPD_MASK | AW88261_PWDN_MASK | AW88261_HMUTE_MASK);
+			/* the masks below and above this line are complementary */
+			reg_val &= (AW88261_AMPPD_MASK & AW88261_PWDN_MASK & AW88261_HMUTE_MASK);
 			reg_val |= read_val;
 
 			/* enable uls hmute */
@@ -458,7 +484,7 @@ static int aw88261_dev_reg_update(struct aw88261 *aw88261,
 		if (reg_addr == AW88261_VSNTM1_REG)
 			continue;
 
-		ret = regmap_write(aw_dev->regmap, reg_addr, reg_val);
+		ret = verbose_regmap_write(aw_dev->dev, aw_dev->regmap, reg_addr, reg_val);
 		if (ret)
 			break;
 	}
@@ -569,7 +595,10 @@ static int aw88261_dev_start(struct aw88261 *aw88261)
 	/* check i2s status */
 	ret = aw88261_dev_check_sysst(aw_dev);
 	if (ret) {
+	  int sc;
 		dev_err(aw_dev->dev, "sysst check failed");
+		verbose_regmap_read(aw88261->aw_pa->dev, aw88261->regmap,AW88261_SYSCTRL_REG,&sc);
+		printk("Alex: AW88261_SYSCTRL_REG = 0x%0x\n",sc);
 		goto sysst_check_fail;
 	}
 
@@ -640,7 +669,7 @@ static int aw88261_reg_update(struct aw88261 *aw88261, bool force)
 	int ret;
 
 	if (force) {
-		ret = regmap_write(aw_dev->regmap,
+		ret = verbose_regmap_write(aw_dev->dev, aw_dev->regmap,
 					AW88261_ID_REG, AW88261_SOFT_RESET_VALUE);
 		if (ret)
 			return ret;
@@ -1016,12 +1045,12 @@ static int aw88261_frcset_check(struct aw88261 *aw88261)
 	u16 temh, teml, tem;
 	int ret;
 
-	ret = regmap_read(aw88261->regmap, AW88261_EFRH3_REG, &reg_val);
+	ret = verbose_regmap_read(aw88261->aw_pa->dev, aw88261->regmap, AW88261_EFRH3_REG, &reg_val);
 	if (ret)
 		return ret;
 	temh = ((u16)reg_val & (~AW88261_TEMH_MASK));
 
-	ret = regmap_read(aw88261->regmap, AW88261_EFRL3_REG, &reg_val);
+	ret = verbose_regmap_read(aw88261->aw_pa->dev, aw88261->regmap, AW88261_EFRL3_REG, &reg_val);
 	if (ret)
 		return ret;
 	teml = ((u16)reg_val & (~AW88261_TEML_MASK));
@@ -1053,7 +1082,7 @@ static int aw88261_dev_init(struct aw88261 *aw88261, struct aw_container *aw_cfg
 		return -EINVAL;
 	}
 
-	ret = regmap_write(aw_dev->regmap, AW88261_ID_REG, AW88261_SOFT_RESET_VALUE);
+	ret = verbose_regmap_write(aw_dev->dev, aw_dev->regmap, AW88261_ID_REG, AW88261_SOFT_RESET_VALUE);
 	if (ret)
 		return ret;
 
@@ -1270,7 +1299,7 @@ static int aw88261_init(struct aw88261 **aw88261, struct i2c_client *i2c, struct
 	int ret;
 
 	/* read chip id */
-	ret = regmap_read(regmap, AW88261_ID_REG, &chip_id);
+	ret = verbose_regmap_read(&i2c->dev, regmap, AW88261_ID_REG, &chip_id);
 	if (ret) {
 		dev_err(&i2c->dev, "%s read chipid error. ret = %d", __func__, ret);
 		return ret;
