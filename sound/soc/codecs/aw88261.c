@@ -143,13 +143,13 @@ static void aw88261_dev_amppd(struct aw_device *aw_dev, bool amppd)
 static void aw88261_dev_mute(struct aw_device *aw_dev, bool is_mute)
 {
 	if (is_mute) {
-		aw88261_dev_fade_out(aw_dev);
+	  //aw88261_dev_fade_out(aw_dev);
 		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL_REG,
 				~AW88261_HMUTE_MASK, AW88261_HMUTE_ENABLE_VALUE);
 	} else {
 		verbose_regmap_update_bits(aw_dev->dev, aw_dev->regmap, AW88261_SYSCTRL_REG,
 				~AW88261_HMUTE_MASK, AW88261_HMUTE_DISABLE_VALUE);
-		aw88261_dev_fade_in(aw_dev);
+		//aw88261_dev_fade_in(aw_dev);
 	}
 }
 
@@ -480,6 +480,29 @@ static int aw88261_dev_reg_update(struct aw88261 *aw88261,
 			aw_dev->volume_desc.init_volume =
 				REG_VAL_TO_DB(read_vol);
 		}
+
+		//ALEX
+		if (reg_addr == AW88261_BSTCTRL1_REG) {
+		  //reg_val &= ~0x80; // 0xFCD => 0xF4D
+		  reg_val=0x40; // force boost, zero thresholds
+		}
+		if (reg_addr == AW88261_BSTCTRL2_REG) {
+		  reg_val = 0x9958;
+		}
+		if (reg_addr == AW88261_I2SCTRL1_REG) {
+		  //default 34e8;      // Philips alignment + 32bits + 64*fs
+		  //BSTKO: reg_val = 0x34d8; // Philips alignment + 32bits + 48*fs
+		  //PLLKO: reg_val = 0x34c8; // Philips alignment + 32bits + 32*fs
+		  //reg_val = 0x36E8; // LSB alignment + 32bits + 64*fs
+		  //reg_val = 0x35E8; // MSB alignment + 32bits + 64*fs
+		  //reg_val = 0x35A8; // MSB alignment + 24bits
+		  //reg_val = 0x3498; // Philips alignment + 24bits + 48*fs
+		  //PLLKO: reg_val = 0x3408; // Philips alignment + 16bits + 32*fs
+		  //BSTKO: reg_val = 0x3418; // Philips alignment + 16bits + 48*fs
+		  //BSTKO: reg_val = 0x3428; // Philips alignment + 16bits + 64*fs
+		}
+
+		
 
 		if (reg_addr == AW88261_VSNTM1_REG)
 			continue;
@@ -1287,7 +1310,8 @@ static void aw88261_parse_channel_dt(struct aw88261 *aw88261)
 	u32 channel_value = AW88261_DEV_DEFAULT_CH;
 
 	of_property_read_u32(np, "awinic,audio-channel", &channel_value);
-	aw88261->phase_sync = of_property_read_bool(np, "awinic,sync-flag");
+	aw88261->phase_sync = 0 /* ALEX NOOO */;
+	//aw88261->phase_sync = of_property_read_bool(np, "awinic,sync-flag");
 
 	aw_dev->channel = channel_value;
 }

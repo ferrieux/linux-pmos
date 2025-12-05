@@ -368,7 +368,7 @@
 #define AW88261_VCAL_FACTOR		(1<<13)
 
 #define AW88261_START_RETRIES		(5)
-#define AW88261_START_WORK_DELAY_MS	(0)
+#define AW88261_START_WORK_DELAY_MS	(5) // Alex: was 0, but there's a race condition for clock setup on I2S in BE-DAI, so delay it
 
 #define AW88261_I2C_NAME		"aw88261"
 
