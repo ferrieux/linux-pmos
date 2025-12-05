@@ -17,6 +17,7 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/mm.h>
+#include <linux/io.h>
 #include "q6asm.h"
 #include "q6core.h"
 #include "q6dsp-errno.h"
@@ -1558,6 +1559,15 @@ int q6asm_open_read(struct audio_client *ac, uint32_t stream_id,
 }
 EXPORT_SYMBOL_GPL(q6asm_open_read);
 
+static void fix_ab(struct audio_client *ac, struct audio_buffer *ab)
+{
+  int i;
+  long long p2v = *((long long *)ac->priv);
+  uint32_t *addr = (uint32_t *)(ab->phys + p2v);
+  for(i=ab->size/sizeof(uint32_t);i>0;i--) {(*addr)<<=8;addr++;}
+}
+
+
 /**
  * q6asm_write_async() - non blocking write
  *
@@ -1595,6 +1605,7 @@ int q6asm_write_async(struct audio_client *ac, uint32_t stream_id, uint32_t len,
 	q6asm_add_hdr(ac, &pkt->hdr, pkt_size, false, stream_id);
 
 	ab = &port->buf[port->dsp_buf];
+	fix_ab(ac, ab);
 	pkt->hdr.token = port->dsp_buf | (len << ASM_WRITE_TOKEN_LEN_SHIFT);
 	pkt->hdr.opcode = ASM_DATA_CMD_WRITE_V2;
 	write->buf_addr_lsw = lower_32_bits(ab->phys);
