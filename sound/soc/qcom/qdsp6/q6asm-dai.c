@@ -49,7 +49,6 @@ enum stream_state {
 };
 
 struct q6asm_dai_rtd {
-	long long phys_to_virt;
 	struct snd_pcm_substream *substream;
 	struct snd_compr_stream *cstream;
 	struct snd_codec codec;
@@ -420,7 +419,6 @@ static int q6asm_dai_open(struct snd_soc_component *component,
 		prtd->phys = substream->dma_buffer.addr;
 	else
 		prtd->phys = substream->dma_buffer.addr | (pdata->sid << 32);
-	prtd->phys_to_virt = ((char *)substream->dma_buffer.area) - ((char *)prtd->phys) ;
 
 	return 0;
 }
